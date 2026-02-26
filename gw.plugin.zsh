@@ -53,7 +53,11 @@ gw() {
         _gw_prune "$2"
         return $?
         ;;
-      h|help|"")
+      h|help)
+        _gw_usage
+        return 0
+        ;;
+      "")
         _gw_usage
         return 0
         ;;
@@ -204,17 +208,22 @@ USAGE
 
 _gw_list() {
   local git_bin=$(command -v git)
+  local current_dir=$(pwd)
 
   local -a gone_branches
   gone_branches=(${(f)"$(LC_ALL=C $git_bin branch -vv 2>/dev/null | awk '/: gone\]/{sub(/^[ *+]+/, ""); print $1}')"})
 
   $git_bin worktree list | while IFS= read -r line; do
+    local wt_path=$(echo "$line" | awk '{print $1}')
     local wt_branch=$(echo "$line" | sed -n 's/.*\[\(.*\)\].*/\1/p')
-    if [[ -n "$wt_branch" ]] && (( ${gone_branches[(Ie)$wt_branch]} )); then
-      echo "$line (리모트 삭제됨)"
-    else
-      echo "$line"
+    local suffix=""
+    if [[ "$current_dir" == "$wt_path" || "$current_dir" == "$wt_path/"* ]]; then
+      suffix=" ← here"
     fi
+    if [[ -n "$wt_branch" ]] && (( ${gone_branches[(Ie)$wt_branch]} )); then
+      suffix=" (리모트 삭제됨)$suffix"
+    fi
+    echo "$line$suffix"
   done
 }
 
@@ -542,12 +551,17 @@ _gw_delete() {
 # --- Zsh completion ---
 
 _gw() {
-  local -a opts
-  opts=(
-    '-b[브랜치 모드 강제]:branch:_gw_git_branches'
-  )
+  if [[ "${words[2]}" == "-b" ]]; then
+    case $CURRENT in
+      3) _gw_git_branches ;;
+      4) _gw_git_branches ;;
+    esac
+    return
+  fi
 
-  _arguments -s $opts '1:command or branch:_gw_first_arg' '2:branch or base:_gw_second_arg'
+  _arguments -s \
+    '1:command or branch:_gw_first_arg' \
+    '2:branch or base:_gw_second_arg'
 }
 
 _gw_first_arg() {
@@ -566,9 +580,8 @@ _gw_first_arg() {
     'h:도움말'
     'help:도움말'
   )
-  _alternative \
-    'subcommands:command:_describe "command" subcmds' \
-    'branches:branch:_gw_git_branches'
+  _describe 'command' subcmds
+  _gw_git_branches
 }
 
 _gw_second_arg() {
