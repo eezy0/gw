@@ -2,6 +2,7 @@
 # https://github.com/eezy0/gw
 #
 # Usage:
+#   gw -i               프로젝트를 gw 구조로 초기화
 #   gw <branch-name>    워크트리 생성 후 이동
 #   gw -d <branch-name> 워크트리 제거
 #   gw -l               워크트리 목록
@@ -19,6 +20,10 @@ gw() {
       ;;
     -c|--config)
       _gw_config
+      return $?
+      ;;
+    -i|--init)
+      _gw_init
       return $?
       ;;
     -h|--help|"")
@@ -105,6 +110,7 @@ _gw_usage() {
 gw - Git Worktree helper
 
 Usage:
+  gw -i              프로젝트를 gw 구조로 초기화
   gw <branch>        워크트리 생성 후 이동 (이미 있으면 이동만)
   gw -d <branch>     워크트리 제거
   gw -l              워크트리 목록
@@ -112,10 +118,18 @@ Usage:
   gw -h              도움말
 
 Examples:
+  gw -i              현재 프로젝트를 project/main/ 구조로 변환
   gw task/1234       task/1234 브랜치로 워크트리 생성 (현재 브랜치 기반)
   gw task/1234       이미 있으면 해당 워크트리로 이동
   gw -d task/1234    task/1234 워크트리 제거
   gw -c              .gwconfig 편집 (없으면 템플릿 생성)
+
+Init (gw -i):
+  일반 git 프로젝트를 gw 워크트리 구조로 변환합니다.
+
+    Before:  my-app/          ← git root
+    After:   my-app/main/     ← main worktree
+             my-app/.gwconfig
 
 Branch 처리:
   - 로컬 브랜치 있음     → 해당 브랜치로 워크트리 생성
@@ -166,6 +180,111 @@ TEMPLATE
   ${EDITOR:-vi} "$config_file"
 }
 
+_gw_init() {
+  local git_root
+  git_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "Error: Not in a git repository"
+    return 1
+  }
+
+  local main_worktree=$(git worktree list --porcelain | head -1 | sed 's/^worktree //')
+  local worktree_parent=$(dirname "$main_worktree")
+
+  # Already in gw structure? (parent has .gwconfig or main worktree is a subdirectory)
+  if [[ -f "$worktree_parent/.gwconfig" ]]; then
+    echo "Already initialized. Config: $worktree_parent/.gwconfig"
+    return 0
+  fi
+
+  # Must run from the main worktree
+  if [[ "$git_root" != "$main_worktree" ]]; then
+    echo "Error: Must run from the main worktree"
+    return 1
+  fi
+
+  # Must not have linked worktrees
+  local worktree_count=$(git worktree list | wc -l | tr -d ' ')
+  if (( worktree_count > 1 )); then
+    echo "Error: Linked worktrees exist. Remove them first with 'gw -d <branch>'"
+    return 1
+  fi
+
+  local branch_name=$(git rev-parse --abbrev-ref HEAD)
+  local project_dir="$git_root"
+  local parent_dir=$(dirname "$project_dir")
+
+  echo "gw init: Restructuring for git worktree workflow"
+  echo ""
+  echo "  Before:  $(basename "$project_dir")/"
+  echo "             ├── .git/"
+  echo "             └── (your files)"
+  echo ""
+  echo "  After:   $(basename "$project_dir")/"
+  echo "             ├── $branch_name/    ← main worktree"
+  echo "             └── .gwconfig"
+  echo ""
+  echo -n "Continue? [y/N] "
+  read -r confirm
+  if [[ "$confirm" != [yY] ]]; then
+    echo "Cancelled."
+    return 0
+  fi
+
+  # Step 1: Move to parent to manipulate the project directory
+  cd "$parent_dir" || return 1
+
+  # Step 2: Rename to temp
+  local temp_name=".gw_init_temp_$$"
+  mv "$project_dir" "$parent_dir/$temp_name" || {
+    echo "Error: Failed to move project directory"
+    return 1
+  }
+
+  # Step 3: Recreate project directory as the new parent
+  mkdir -p "$project_dir" || {
+    mv "$parent_dir/$temp_name" "$project_dir"
+    echo "Error: Failed to create directory"
+    return 1
+  }
+
+  # Step 4: Move repo into branch-named subdirectory
+  mv "$parent_dir/$temp_name" "$project_dir/$branch_name" || {
+    rmdir "$project_dir" 2>/dev/null
+    mv "$parent_dir/$temp_name" "$project_dir"
+    echo "Error: Failed to restructure"
+    return 1
+  }
+
+  # Step 5: Create .gwconfig
+  cat > "$project_dir/.gwconfig" <<'TEMPLATE'
+# gw config
+# 워크트리 생성 시 자동으로 적용됩니다.
+
+# 메인 워크트리에서 새 워크트리로 복사할 파일
+GW_COPY_FILES=(
+  # ".env"
+  # ".env.local"
+)
+
+# 워크트리 생성 후 실행할 명령어
+GW_POST_COMMANDS=(
+  # "pnpm install"
+  # "pnpm build"
+)
+TEMPLATE
+
+  # Step 6: cd to main worktree
+  cd "$project_dir/$branch_name" || return 1
+
+  echo ""
+  echo "Done! Restructured:"
+  echo "  $(basename "$project_dir")/"
+  echo "  ├── $branch_name/    ← you are here"
+  echo "  └── .gwconfig"
+  echo ""
+  echo "Run 'gw -c' to customize your config."
+}
+
 _gw_delete() {
   local branch="$1"
   if [[ -z "$branch" ]]; then
@@ -208,6 +327,8 @@ _gw() {
     '--list[워크트리 목록]'
     '-c[.gwconfig 열기/생성]'
     '--config[.gwconfig 열기/생성]'
+    '-i[gw 구조로 초기화]'
+    '--init[gw 구조로 초기화]'
     '-h[도움말]'
     '--help[도움말]'
   )

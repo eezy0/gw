@@ -3,6 +3,7 @@
 Git worktree를 간편하게 관리하는 zsh 플러그인.
 
 ```
+gw -i              # 프로젝트를 gw 구조로 초기화
 gw task/1234       # 워크트리 생성 후 이동
 gw task/1234       # 이미 있으면 이동만
 gw -d task/1234    # 워크트리 제거
@@ -25,6 +26,26 @@ gw -c              # .gwconfig 편집 (없으면 생성)
 - 로컬 브랜치 있음 → 해당 브랜치 사용
 - 리모트 브랜치만 있음 → tracking 브랜치 생성
 - 브랜치 없음 → 현재 브랜치 기반으로 새 브랜치 생성
+
+## 초기화 (gw -i)
+
+기존 git 프로젝트를 gw 워크트리 구조로 변환합니다.
+
+```
+# Before                    # After
+~/projects/my-app/          ~/projects/my-app/
+├── .git/                   ├── main/          ← main worktree
+├── src/                    │   ├── .git/
+└── ...                     │   ├── src/
+                            │   └── ...
+                            └── .gwconfig
+```
+
+```sh
+cd ~/projects/my-app
+gw -i
+# → my-app/main/ 으로 재구조화되고 .gwconfig 생성
+```
 
 ## 설치
 
