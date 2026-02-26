@@ -10,6 +10,22 @@
 #   gw -c               .gwconfig 열기/생성
 
 gw() {
+  # If not in a git repo but .gwconfig exists, cd to main worktree
+  if ! git rev-parse --show-toplevel &>/dev/null && [[ -f ".gwconfig" ]]; then
+    local gw_main
+    for d in */; do
+      if [[ -d "${d}.git" ]]; then
+        gw_main="${d%/}"
+        break
+      fi
+    done
+    if [[ -z "$gw_main" ]]; then
+      echo "Error: .gwconfig는 있지만 main 워크트리를 찾을 수 없습니다"
+      return 1
+    fi
+    cd "$gw_main"
+  fi
+
   case "$1" in
     -d|--delete)
       _gw_delete "$2"
