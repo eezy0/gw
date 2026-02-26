@@ -177,26 +177,6 @@ Examples:
   gw prune --dry-run   정리 대상 목록만 확인
   gw c                 .gwconfig 편집 (없으면 템플릿 생성)
   gw -b init           "init" 이름의 브랜치로 워크트리 생성
-
-Init (gw init):
-  일반 git 프로젝트를 gw 워크트리 구조로 변환합니다.
-
-    Before:  my-app/          ← git root
-    After:   my-app/main/     ← main worktree
-             my-app/.gwconfig
-
-Branch 처리:
-  - 로컬 브랜치 있음     → 해당 브랜치로 워크트리 생성
-  - 리모트 브랜치만 있음 → 리모트 tracking 브랜치로 생성
-  - 브랜치 없음          → 현재 브랜치 기반 새 브랜치 생성 (base 지정 시 해당 브랜치 기반)
-
-Config (.gwconfig):
-  워크트리 부모 디렉토리에 .gwconfig 파일을 두면
-  워크트리 생성 시 파일 복사 및 명령어를 자동 실행합니다.
-
-  예시:
-    GW_COPY_FILES=(".env" ".env.local")
-    GW_POST_COMMANDS=("pnpm install" "pnpm build")
 USAGE
 }
 
