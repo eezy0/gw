@@ -7,8 +7,10 @@ gw -i              # 프로젝트를 gw 구조로 초기화
 gw task/1234       # 워크트리 생성 후 이동 (현재 브랜치 기반)
 gw task/1234 develop  # develop 기반으로 워크트리 생성
 gw task/1234       # 이미 있으면 이동만
-gw -d task/1234    # 워크트리 제거
-gw -l              # 워크트리 목록
+gw -d task/1234    # 워크트리 제거 (로컬 브랜치도 삭제)
+gw prune           # 리모트에서 삭제된 브랜치의 워크트리 일괄 정리
+gw prune --dry-run # 정리 대상만 확인
+gw -l              # 워크트리 목록 (리모트 삭제 표시)
 gw -c              # .gwconfig 편집 (없으면 생성)
 ```
 
@@ -81,6 +83,40 @@ bash <(curl -fsSL https://raw.githubusercontent.com/eezy0/gw/main/install.sh)
 ```
 
 Oh My Zsh가 있으면 커스텀 플러그인으로, 없으면 `~/.zsh-functions/`에 설치합니다.
+
+## 정리 (gw prune)
+
+GitHub에서 PR 머지 후 브랜치가 삭제되면, 해당 워크트리를 한번에 정리합니다.
+
+```sh
+gw prune
+# Fetching...
+# 정리 대상:
+#   task/dto-geo-point  (리모트 브랜치 삭제됨)
+#   task/old-feature    (리모트 브랜치 삭제됨)
+#
+# 모두 제거할까요? [y/N] y
+#
+# 제거 중: task/dto-geo-point
+# 브랜치 삭제: task/dto-geo-point
+# 제거 중: task/old-feature
+# 브랜치 삭제: task/old-feature
+#
+# Done! /Users/you/projects/my-app/main
+```
+
+- 디렉토리가 수동 삭제된 깨진 워크트리도 함께 정리
+- 현재 위치가 정리 대상이면 main으로 자동 이동
+- `gw prune --dry-run`으로 정리 대상만 확인 가능
+
+## 삭제 (gw -d)
+
+```sh
+gw -d task/1234    # 워크트리 + 로컬 브랜치 삭제
+```
+
+- 현재 워크트리에서도 삭제 가능 (main으로 자동 이동)
+- uncommitted changes가 있어도 강제 제거
 
 ## 탭 자동완성
 
