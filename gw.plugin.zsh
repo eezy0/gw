@@ -210,6 +210,14 @@ _gw_init() {
   fi
 
   local branch_name=$(git rev-parse --abbrev-ref HEAD)
+
+  # Branch with "/" would break directory structure
+  if [[ "$branch_name" == */* ]]; then
+    echo "Error: Current branch '$branch_name' contains '/'."
+    echo "Switch to main branch first: git checkout main"
+    return 1
+  fi
+
   local project_dir="$git_root"
   local parent_dir=$(dirname "$project_dir")
 
