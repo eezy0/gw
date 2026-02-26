@@ -476,13 +476,15 @@ _gw_delete() {
     return 1
   fi
 
+  local git_bin=$(command -v git)
+
   local git_root
-  git_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  git_root=$($git_bin rev-parse --show-toplevel 2>/dev/null) || {
     echo "Error: Not in a git repository"
     return 1
   }
 
-  local main_worktree=$(git worktree list --porcelain | head -1 | sed 's/^worktree //')
+  local main_worktree=$($git_bin worktree list --porcelain | head -1 | sed 's/^worktree //')
   local worktree_parent=$(dirname "$main_worktree")
   local worktree_path="$worktree_parent/$branch"
 
@@ -491,13 +493,26 @@ _gw_delete() {
     return 1
   fi
 
+  # Auto-cd to main if currently in the target worktree
   if [[ "$(pwd)" == "$worktree_path"* ]]; then
-    echo "Error: Cannot delete current worktree. cd to another worktree first."
-    return 1
+    cd "$main_worktree"
   fi
 
   echo "Removing worktree: $worktree_path"
-  git worktree remove "$worktree_path" && echo "Done!"
+  if ! $git_bin worktree remove "$worktree_path" 2>/dev/null; then
+    echo "  강제 제거 중 (uncommitted changes)"
+    $git_bin worktree remove --force "$worktree_path" || {
+      echo "  Error: 워크트리 제거 실패"
+      return 1
+    }
+  fi
+
+  # Clean up local branch
+  if $git_bin show-ref --verify --quiet "refs/heads/$branch"; then
+    $git_bin branch -D "$branch" 2>/dev/null && echo "브랜치 삭제: $branch"
+  fi
+
+  echo "Done! $(pwd)"
 }
 
 # --- Zsh completion ---
