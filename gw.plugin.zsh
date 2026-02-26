@@ -3,7 +3,7 @@
 #
 # Usage:
 #   gw -i               프로젝트를 gw 구조로 초기화
-#   gw <branch-name>    워크트리 생성 후 이동
+#   gw <branch> [base]  워크트리 생성 후 이동
 #   gw -d <branch-name> 워크트리 제거
 #   gw -l               워크트리 목록
 #   gw -c               .gwconfig 열기/생성
@@ -33,6 +33,7 @@ gw() {
   esac
 
   local branch="$1"
+  local base="$2"
 
   local git_root
   git_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -47,24 +48,45 @@ gw() {
 
   # Worktree already exists → just cd
   if [[ -d "$worktree_path" ]]; then
+    [[ -n "$base" ]] && echo "Warning: base branch '$base' ignored (worktree already exists)"
     echo "Worktree already exists, moving to: $worktree_path"
     cd "$worktree_path"
     return 0
   fi
 
+  local base_branch="$current_branch"
+  if [[ -n "$base" ]]; then
+    if git show-ref --verify --quiet "refs/heads/$base"; then
+      base_branch="$base"
+    elif git show-ref --verify --quiet "refs/remotes/origin/$base"; then
+      base_branch="origin/$base"
+    elif git fetch origin "$base" 2>/dev/null && git show-ref --verify --quiet "refs/remotes/origin/$base"; then
+      base_branch="origin/$base"
+    else
+      echo "Error: base branch '$base' not found"
+      return 1
+    fi
+  fi
+
   echo "Creating worktree: $worktree_path"
-  echo "Branch: $branch (base: $current_branch)"
+  echo "Branch: $branch (base: $base_branch)"
   echo ""
 
   if git show-ref --verify --quiet "refs/heads/$branch"; then
+    [[ -n "$base" ]] && echo "Warning: base branch '$base' ignored (local branch '$branch' already exists)"
     echo "Using existing local branch: $branch"
     git worktree add "$worktree_path" "$branch" || return 1
   elif git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+    [[ -n "$base" ]] && echo "Warning: base branch '$base' ignored (remote branch 'origin/$branch' already exists)"
     echo "Using existing remote branch: origin/$branch"
+    git worktree add -b "$branch" "$worktree_path" "origin/$branch" || return 1
+  elif git fetch origin "$branch" 2>/dev/null && git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+    [[ -n "$base" ]] && echo "Warning: base branch '$base' ignored (remote branch 'origin/$branch' found)"
+    echo "Fetched remote branch: origin/$branch"
     git worktree add -b "$branch" "$worktree_path" "origin/$branch" || return 1
   else
     echo "Creating new branch: $branch"
-    git worktree add -b "$branch" "$worktree_path" "$current_branch" || return 1
+    git worktree add -b "$branch" "$worktree_path" "$base_branch" || return 1
   fi
 
   # Load project-specific config
@@ -111,7 +133,7 @@ gw - Git Worktree helper
 
 Usage:
   gw -i              프로젝트를 gw 구조로 초기화
-  gw <branch>        워크트리 생성 후 이동 (이미 있으면 이동만)
+  gw <branch> [base] 워크트리 생성 후 이동 (이미 있으면 이동만)
   gw -d <branch>     워크트리 제거
   gw -l              워크트리 목록
   gw -c              .gwconfig 열기/생성
@@ -120,6 +142,7 @@ Usage:
 Examples:
   gw -i              현재 프로젝트를 project/main/ 구조로 변환
   gw task/1234       task/1234 브랜치로 워크트리 생성 (현재 브랜치 기반)
+  gw task/1234 develop  develop 기반으로 워크트리 생성
   gw task/1234       이미 있으면 해당 워크트리로 이동
   gw -d task/1234    task/1234 워크트리 제거
   gw -c              .gwconfig 편집 (없으면 템플릿 생성)
@@ -134,7 +157,7 @@ Init (gw -i):
 Branch 처리:
   - 로컬 브랜치 있음     → 해당 브랜치로 워크트리 생성
   - 리모트 브랜치만 있음 → 리모트 tracking 브랜치로 생성
-  - 브랜치 없음          → 현재 브랜치 기반 새 브랜치 생성
+  - 브랜치 없음          → 현재 브랜치 기반 새 브랜치 생성 (base 지정 시 해당 브랜치 기반)
 
 Config (.gwconfig):
   워크트리 부모 디렉토리에 .gwconfig 파일을 두면
@@ -339,7 +362,7 @@ _gw() {
     '--help[도움말]'
   )
 
-  _arguments -s $opts '1:branch:_gw_git_branches'
+  _arguments -s $opts '1:branch:_gw_git_branches' '2:base branch:_gw_git_branches'
 }
 
 _gw_git_branches() {
