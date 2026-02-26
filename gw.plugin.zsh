@@ -127,8 +127,8 @@ Config (.gwconfig):
   워크트리 생성 시 파일 복사 및 명령어를 자동 실행합니다.
 
   예시:
-    GW_COPY_FILES=(.env .env.local)
-    GW_POST_COMMANDS=("pnpm install")
+    GW_COPY_FILES=(".env" ".env.local")
+    GW_POST_COMMANDS=("pnpm install" "pnpm build")
 USAGE
 }
 
@@ -150,13 +150,14 @@ _gw_config() {
 
 # 메인 워크트리에서 새 워크트리로 복사할 파일
 GW_COPY_FILES=(
-  # .env
-  # .env.local
+  # ".env"
+  # ".env.local"
 )
 
 # 워크트리 생성 후 실행할 명령어
 GW_POST_COMMANDS=(
   # "pnpm install"
+  # "pnpm build"
 )
 TEMPLATE
     echo "Created: $config_file"

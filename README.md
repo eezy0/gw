@@ -75,10 +75,16 @@ Oh My Zsh가 있으면 커스텀 플러그인으로, 없으면 `~/.zsh-functions
 # ~/projects/.gwconfig
 
 # 메인 워크트리에서 새 워크트리로 복사할 파일
-GW_COPY_FILES=(.env .env.local)
+GW_COPY_FILES=(
+  ".env"
+  ".env.local"
+)
 
 # 워크트리 생성 후 실행할 명령어
-GW_POST_COMMANDS=("pnpm install")
+GW_POST_COMMANDS=(
+  "pnpm install"
+  "pnpm build"
+)
 ```
 
 ## License
