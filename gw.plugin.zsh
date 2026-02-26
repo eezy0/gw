@@ -32,7 +32,7 @@ gw() {
       return $?
       ;;
     -l|--list)
-      git worktree list
+      _gw_list
       return $?
       ;;
     -c|--config)
@@ -70,7 +70,6 @@ gw() {
   # Worktree already exists → just cd
   if [[ -d "$worktree_path" ]]; then
     [[ -n "$base" ]] && echo "Warning: base branch '$base' ignored (worktree already exists)"
-    echo "Worktree already exists, moving to: $worktree_path"
     cd "$worktree_path"
     return 0
   fi
@@ -192,6 +191,22 @@ Config (.gwconfig):
     GW_COPY_FILES=(".env" ".env.local")
     GW_POST_COMMANDS=("pnpm install" "pnpm build")
 USAGE
+}
+
+_gw_list() {
+  local git_bin=$(command -v git)
+
+  local -a gone_branches
+  gone_branches=(${(f)"$(LC_ALL=C $git_bin branch -vv 2>/dev/null | awk '/: gone\]/{sub(/^[ *+]+/, ""); print $1}')"})
+
+  $git_bin worktree list | while IFS= read -r line; do
+    local wt_branch=$(echo "$line" | sed -n 's/.*\[\(.*\)\].*/\1/p')
+    if [[ -n "$wt_branch" ]] && (( ${gone_branches[(Ie)$wt_branch]} )); then
+      echo "$line (리모트 삭제됨)"
+    else
+      echo "$line"
+    fi
+  done
 }
 
 _gw_config() {
