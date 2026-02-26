@@ -211,10 +211,8 @@ _gw_init() {
 
   local branch_name=$(git rev-parse --abbrev-ref HEAD)
 
-  # Branch with "/" would break directory structure
-  if [[ "$branch_name" == */* ]]; then
-    echo "Error: Current branch '$branch_name' contains '/'."
-    echo "Switch to main branch first: git checkout main"
+  if [[ "$branch_name" != "main" && "$branch_name" != "master" ]]; then
+    echo "Error: gw -i must be run on 'main' or 'master' branch. (current: $branch_name)"
     return 1
   fi
 
