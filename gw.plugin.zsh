@@ -12,7 +12,6 @@
 #   gw h|help             도움말
 
 gw() {
-  # If not in a git repo but .gwconfig exists, cd to main worktree
   if ! git rev-parse --show-toplevel &>/dev/null && [[ -f ".gwconfig" ]]; then
     local gw_main
     for d in */; do
@@ -21,14 +20,11 @@ gw() {
         break
       fi
     done
-    if [[ -z "$gw_main" ]]; then
-      echo "Error: .gwconfig는 있지만 main 워크트리를 찾을 수 없습니다"
-      return 1
+    if [[ -n "$gw_main" ]]; then
+      cd "$gw_main"
     fi
-    cd "$gw_main"
   fi
 
-  # -b: force branch mode, skip subcommand matching
   if [[ "$1" == "-b" ]]; then
     shift
   else
@@ -78,7 +74,6 @@ gw() {
   local worktree_parent=$(dirname "$main_worktree")
   local worktree_path="$worktree_parent/$branch"
 
-  # Worktree already exists → just cd
   if [[ -d "$worktree_path" ]]; then
     [[ -n "$base" ]] && echo "Warning: base branch '$base' ignored (worktree already exists)"
     cd "$worktree_path"
@@ -120,7 +115,6 @@ gw() {
     git worktree add -b "$branch" "$worktree_path" "$base_branch" || return 1
   fi
 
-  # Load project-specific config
   local config_file="$worktree_parent/.gwconfig"
   if [[ -f "$config_file" ]]; then
     local GW_COPY_FILES=()
@@ -271,19 +265,16 @@ _gw_init() {
   local main_worktree=$(git worktree list --porcelain | head -1 | sed 's/^worktree //')
   local worktree_parent=$(dirname "$main_worktree")
 
-  # Already in gw structure? (parent has .gwconfig or main worktree is a subdirectory)
   if [[ -f "$worktree_parent/.gwconfig" ]]; then
     echo "Already initialized. Config: $worktree_parent/.gwconfig"
     return 0
   fi
 
-  # Must run from the main worktree
   if [[ "$git_root" != "$main_worktree" ]]; then
     echo "Error: Must run from the main worktree"
     return 1
   fi
 
-  # Must not have linked worktrees
   local worktree_count=$(git worktree list | wc -l | tr -d ' ')
   if (( worktree_count > 1 )); then
     echo "Error: Linked worktrees exist. Remove them first with 'gw d <branch>'"
@@ -317,24 +308,20 @@ _gw_init() {
     return 0
   fi
 
-  # Step 1: Move to parent to manipulate the project directory
   cd "$parent_dir" || return 1
 
-  # Step 2: Rename to temp
   local temp_name=".gw_init_temp_$$"
   mv "$project_dir" "$parent_dir/$temp_name" || {
     echo "Error: Failed to move project directory"
     return 1
   }
 
-  # Step 3: Recreate project directory as the new parent
   mkdir -p "$project_dir" || {
     mv "$parent_dir/$temp_name" "$project_dir"
     echo "Error: Failed to create directory"
     return 1
   }
 
-  # Step 4: Move repo into branch-named subdirectory
   mv "$parent_dir/$temp_name" "$project_dir/$branch_name" || {
     rmdir "$project_dir" 2>/dev/null
     mv "$parent_dir/$temp_name" "$project_dir"
@@ -342,7 +329,6 @@ _gw_init() {
     return 1
   }
 
-  # Step 5: Create .gwconfig
   cat > "$project_dir/.gwconfig" <<'TEMPLATE'
 # gw config
 # 워크트리 생성 시 자동으로 적용됩니다.
@@ -360,7 +346,6 @@ GW_POST_COMMANDS=(
 )
 TEMPLATE
 
-  # Step 6: cd to main worktree
   cd "$project_dir/$branch_name" || return 1
 
   echo ""
@@ -390,11 +375,9 @@ _gw_prune() {
   local worktree_parent=$(dirname "$main_worktree")
   local current_dir=$(pwd)
 
-  # Fetch and prune remote tracking refs
   echo "Fetching..."
   $git_bin fetch --prune origin 2>/dev/null
 
-  # Get gone branches (remote deleted)
   local -a gone_branches
   gone_branches=(${(f)"$(LC_ALL=C $git_bin branch -vv 2>/dev/null | awk '/: gone\]/{sub(/^[ *+]+/, ""); print $1}')"})
 
@@ -403,7 +386,6 @@ _gw_prune() {
   local -a pruneable_reasons=()
   local needs_cd=false
 
-  # Parse worktree list (porcelain), skip main worktree
   local is_main=true
   local wt_path="" wt_branch=""
 
@@ -463,12 +445,10 @@ _gw_prune() {
 
   echo ""
 
-  # If current dir is being removed, cd to main first
   if $needs_cd; then
     cd "$main_worktree"
   fi
 
-  # Clean stale entries first (broken worktrees with missing directories)
   $git_bin worktree prune
 
   local -a removed_branches=()
@@ -491,7 +471,6 @@ _gw_prune() {
     removed_branches+=("$name")
   done
 
-  # Clean up local branches
   for branch in "${removed_branches[@]}"; do
     if $git_bin show-ref --verify --quiet "refs/heads/$branch"; then
       $git_bin branch -D "$branch" 2>/dev/null && echo "브랜치 삭제: $branch"
@@ -526,7 +505,6 @@ _gw_delete() {
     return 1
   fi
 
-  # Auto-cd to main if currently in the target worktree
   if [[ "$(pwd)" == "$worktree_path"* ]]; then
     cd "$main_worktree"
   fi
@@ -540,7 +518,6 @@ _gw_delete() {
     }
   fi
 
-  # Clean up local branch
   if $git_bin show-ref --verify --quiet "refs/heads/$branch"; then
     $git_bin branch -D "$branch" 2>/dev/null && echo "브랜치 삭제: $branch"
   fi
@@ -596,15 +573,32 @@ _gw_second_arg() {
   esac
 }
 
+_gw_resolve_git_c() {
+  _gw_git_c_args=()
+  if ! git rev-parse --show-toplevel &>/dev/null && [[ -f ".gwconfig" ]]; then
+    local d
+    for d in */; do
+      if [[ -d "${d}.git" ]]; then
+        _gw_git_c_args=(-C "${PWD}/${d%/}")
+        return 0
+      fi
+    done
+    return 1
+  fi
+  return 0
+}
+
 _gw_git_branches() {
+  _gw_resolve_git_c || return
   local -a branches
-  branches=(${(f)"$(git branch --all --format='%(refname:short)' 2>/dev/null | grep -v '^origin$' | sed 's|^origin/||' | sort -u)"})
+  branches=(${(f)"$(git ${_gw_git_c_args[@]} branch --all --format='%(refname:short)' 2>/dev/null | grep -v '^origin$' | sed 's|^origin/||' | sort -u)"})
   _describe 'branch' branches
 }
 
 _gw_worktree_branches() {
+  _gw_resolve_git_c || return
   local -a branches
-  branches=(${(f)"$(git worktree list --porcelain 2>/dev/null | awk '/^branch refs\/heads\//{sub("^branch refs/heads/", ""); print}')"})
+  branches=(${(f)"$(git ${_gw_git_c_args[@]} worktree list --porcelain 2>/dev/null | awk '/^branch refs\/heads\//{sub("^branch refs/heads/", ""); print}')"})
   _describe 'worktree branch' branches
 }
 
