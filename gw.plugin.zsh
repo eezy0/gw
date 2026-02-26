@@ -2,12 +2,14 @@
 # https://github.com/eezy0/gw
 #
 # Usage:
-#   gw -i               프로젝트를 gw 구조로 초기화
-#   gw <branch> [base]  워크트리 생성 후 이동
-#   gw -d <branch-name> 워크트리 제거
-#   gw prune [--dry-run] pruneable 워크트리 정리
-#   gw -l               워크트리 목록
-#   gw -c               .gwconfig 열기/생성
+#   gw <branch> [base]    워크트리 생성 후 이동
+#   gw -b <branch> [base] 서브커맨드와 이름 충돌 시
+#   gw d|delete <branch>  워크트리 제거
+#   gw p|prune [--dry-run] pruneable 워크트리 정리
+#   gw l|list             워크트리 목록
+#   gw c|config           .gwconfig 열기/생성
+#   gw i|init             프로젝트를 gw 구조로 초기화
+#   gw h|help             도움말
 
 gw() {
   # If not in a git repo but .gwconfig exists, cd to main worktree
@@ -26,32 +28,37 @@ gw() {
     cd "$gw_main"
   fi
 
-  case "$1" in
-    -d|--delete)
-      _gw_delete "$2"
-      return $?
-      ;;
-    -l|--list)
-      _gw_list
-      return $?
-      ;;
-    -c|--config)
-      _gw_config
-      return $?
-      ;;
-    -i|--init)
-      _gw_init
-      return $?
-      ;;
-    prune)
-      _gw_prune "$2"
-      return $?
-      ;;
-    -h|--help|"")
-      _gw_usage
-      return 0
-      ;;
-  esac
+  # -b: force branch mode, skip subcommand matching
+  if [[ "$1" == "-b" ]]; then
+    shift
+  else
+    case "$1" in
+      d|delete)
+        _gw_delete "$2"
+        return $?
+        ;;
+      l|list)
+        _gw_list
+        return $?
+        ;;
+      c|config)
+        _gw_config
+        return $?
+        ;;
+      i|init)
+        _gw_init
+        return $?
+        ;;
+      p|prune)
+        _gw_prune "$2"
+        return $?
+        ;;
+      h|help|"")
+        _gw_usage
+        return 0
+        ;;
+    esac
+  fi
 
   local branch="$1"
   local base="$2"
@@ -152,26 +159,28 @@ _gw_usage() {
 gw - Git Worktree helper
 
 Usage:
-  gw -i              프로젝트를 gw 구조로 초기화
-  gw <branch> [base] 워크트리 생성 후 이동 (이미 있으면 이동만)
-  gw -d <branch>     워크트리 제거
-  gw prune           리모트에서 삭제된 브랜치의 워크트리 정리
-  gw prune --dry-run 정리 대상만 확인
-  gw -l              워크트리 목록
-  gw -c              .gwconfig 열기/생성
-  gw -h              도움말
+  gw i|init             프로젝트를 gw 구조로 초기화
+  gw <branch> [base]    워크트리 생성 후 이동 (이미 있으면 이동만)
+  gw d|delete <branch>  워크트리 제거
+  gw p|prune            리모트에서 삭제된 브랜치의 워크트리 정리
+  gw p|prune --dry-run  정리 대상만 확인
+  gw l|list             워크트리 목록
+  gw c|config           .gwconfig 열기/생성
+  gw h|help             도움말
+  gw -b <branch> [base] 서브커맨드와 이름 충돌 시
 
 Examples:
-  gw -i              현재 프로젝트를 project/main/ 구조로 변환
-  gw task/1234       task/1234 브랜치로 워크트리 생성 (현재 브랜치 기반)
-  gw task/1234 develop  develop 기반으로 워크트리 생성
-  gw task/1234       이미 있으면 해당 워크트리로 이동
-  gw -d task/1234    task/1234 워크트리 제거
-  gw prune           리모트에서 삭제된 브랜치의 워크트리 한번에 정리
-  gw prune --dry-run 정리 대상 목록만 확인
-  gw -c              .gwconfig 편집 (없으면 템플릿 생성)
+  gw i                 현재 프로젝트를 project/main/ 구조로 변환
+  gw task/1234         task/1234 브랜치로 워크트리 생성 (현재 브랜치 기반)
+  gw task/1234 develop develop 기반으로 워크트리 생성
+  gw task/1234         이미 있으면 해당 워크트리로 이동
+  gw d task/1234       task/1234 워크트리 제거
+  gw prune             리모트에서 삭제된 브랜치의 워크트리 한번에 정리
+  gw prune --dry-run   정리 대상 목록만 확인
+  gw c                 .gwconfig 편집 (없으면 템플릿 생성)
+  gw -b init           "init" 이름의 브랜치로 워크트리 생성
 
-Init (gw -i):
+Init (gw init):
   일반 git 프로젝트를 gw 워크트리 구조로 변환합니다.
 
     Before:  my-app/          ← git root
@@ -268,14 +277,14 @@ _gw_init() {
   # Must not have linked worktrees
   local worktree_count=$(git worktree list | wc -l | tr -d ' ')
   if (( worktree_count > 1 )); then
-    echo "Error: Linked worktrees exist. Remove them first with 'gw -d <branch>'"
+    echo "Error: Linked worktrees exist. Remove them first with 'gw d <branch>'"
     return 1
   fi
 
   local branch_name=$(git rev-parse --abbrev-ref HEAD)
 
   if [[ "$branch_name" != "main" && "$branch_name" != "master" ]]; then
-    echo "Error: gw -i must be run on 'main' or 'master' branch. (current: $branch_name)"
+    echo "Error: gw init must be run on 'main' or 'master' branch. (current: $branch_name)"
     return 1
   fi
 
@@ -351,7 +360,7 @@ TEMPLATE
   echo "  ├── $branch_name/    ← you are here"
   echo "  └── .gwconfig"
   echo ""
-  echo "Run 'gw -c' to customize your config."
+  echo "Run 'gw c' to customize your config."
 }
 
 _gw_prune() {
@@ -487,7 +496,7 @@ _gw_prune() {
 _gw_delete() {
   local branch="$1"
   if [[ -z "$branch" ]]; then
-    echo "Usage: gw -d <branch-name>"
+    echo "Usage: gw d <branch-name>"
     return 1
   fi
 
@@ -535,30 +544,43 @@ _gw_delete() {
 _gw() {
   local -a opts
   opts=(
-    '-d[워크트리 제거]:branch:_gw_worktree_branches'
-    '--delete[워크트리 제거]:branch:_gw_worktree_branches'
-    '-l[워크트리 목록]'
-    '--list[워크트리 목록]'
-    '-c[.gwconfig 열기/생성]'
-    '--config[.gwconfig 열기/생성]'
-    '-i[gw 구조로 초기화]'
-    '--init[gw 구조로 초기화]'
-    '-h[도움말]'
-    '--help[도움말]'
+    '-b[브랜치 모드 강제]:branch:_gw_git_branches'
   )
 
-  local -a subcmds
-  subcmds=(
-    'prune:머지됨/깨진 워크트리 정리'
-  )
-
-  _arguments -s $opts '1:branch or command:_gw_first_arg' '2:base branch:_gw_git_branches'
+  _arguments -s $opts '1:command or branch:_gw_first_arg' '2:branch or base:_gw_second_arg'
 }
 
 _gw_first_arg() {
+  local -a subcmds
+  subcmds=(
+    'd:워크트리 제거'
+    'delete:워크트리 제거'
+    'l:워크트리 목록'
+    'list:워크트리 목록'
+    'c:.gwconfig 열기/생성'
+    'config:.gwconfig 열기/생성'
+    'i:gw 구조로 초기화'
+    'init:gw 구조로 초기화'
+    'p:리모트 삭제된 워크트리 정리'
+    'prune:리모트 삭제된 워크트리 정리'
+    'h:도움말'
+    'help:도움말'
+  )
   _alternative \
-    'subcommands:command:(prune)' \
+    'subcommands:command:_describe "command" subcmds' \
     'branches:branch:_gw_git_branches'
+}
+
+_gw_second_arg() {
+  local cmd="${words[2]}"
+  case "$cmd" in
+    d|delete)
+      _gw_worktree_branches
+      ;;
+    *)
+      _gw_git_branches
+      ;;
+  esac
 }
 
 _gw_git_branches() {

@@ -3,15 +3,15 @@
 Git worktree를 간편하게 관리하는 zsh 플러그인.
 
 ```
-gw -i              # 프로젝트를 gw 구조로 초기화
+gw init            # 프로젝트를 gw 구조로 초기화 (gw i)
 gw task/1234       # 워크트리 생성 후 이동 (현재 브랜치 기반)
 gw task/1234 develop  # develop 기반으로 워크트리 생성
 gw task/1234       # 이미 있으면 이동만
-gw -d task/1234    # 워크트리 제거 (로컬 브랜치도 삭제)
+gw delete task/1234   # 워크트리 제거 (gw d)
 gw prune           # 리모트에서 삭제된 브랜치의 워크트리 일괄 정리
-gw prune --dry-run # 정리 대상만 확인
-gw -l              # 워크트리 목록 (리모트 삭제 표시)
-gw -c              # .gwconfig 편집 (없으면 생성)
+gw list            # 워크트리 목록 (gw l)
+gw config          # .gwconfig 편집 (gw c)
+gw -b <branch>     # 서브커맨드와 이름 충돌 시 브랜치 강제 지정
 ```
 
 ## 동작 방식
@@ -30,7 +30,7 @@ gw -c              # .gwconfig 편집 (없으면 생성)
 - 리모트 브랜치만 있음 → tracking 브랜치 생성
 - 브랜치 없음 → 현재 브랜치 기반으로 새 브랜치 생성 (base 지정 시 해당 브랜치 기반)
 
-## 초기화 (gw -i)
+## 초기화 (gw init)
 
 기존 git 프로젝트를 gw 워크트리 구조로 변환합니다.
 
@@ -46,7 +46,7 @@ gw -c              # .gwconfig 편집 (없으면 생성)
 
 ```sh
 cd ~/projects/my-app
-gw -i
+gw init
 # → my-app/main/ 으로 재구조화되고 .gwconfig 생성
 ```
 
@@ -109,10 +109,10 @@ gw prune
 - 현재 위치가 정리 대상이면 main으로 자동 이동
 - `gw prune --dry-run`으로 정리 대상만 확인 가능
 
-## 삭제 (gw -d)
+## 삭제 (gw delete)
 
 ```sh
-gw -d task/1234    # 워크트리 + 로컬 브랜치 삭제
+gw d task/1234     # 워크트리 + 로컬 브랜치 삭제
 ```
 
 - 현재 워크트리에서도 삭제 가능 (main으로 자동 이동)
@@ -120,14 +120,14 @@ gw -d task/1234    # 워크트리 + 로컬 브랜치 삭제
 
 ## 탭 자동완성
 
-- `gw <Tab>` — 브랜치 이름 자동완성 (로컬 + 리모트)
-- `gw -d <Tab>` — 기존 워크트리 브랜치 자동완성
+- `gw <Tab>` — 서브커맨드 + 브랜치 이름 자동완성
+- `gw d <Tab>` — 기존 워크트리 브랜치 자동완성
 
 ## 프로젝트 설정 (.gwconfig)
 
 워크트리 부모 디렉토리에 `.gwconfig` 파일을 두면, 워크트리 생성 시 파일 복사와 명령어 실행을 자동으로 수행합니다.
 
-`gw -c`로 설정 파일을 열거나 새로 만들 수 있습니다.
+`gw c`로 설정 파일을 열거나 새로 만들 수 있습니다.
 
 ```sh
 # ~/projects/.gwconfig
