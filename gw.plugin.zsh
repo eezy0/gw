@@ -5,6 +5,7 @@
 #   gw -i               프로젝트를 gw 구조로 초기화
 #   gw <branch> [base]  워크트리 생성 후 이동
 #   gw -d <branch-name> 워크트리 제거
+#   gw prune [--dry-run] pruneable 워크트리 정리
 #   gw -l               워크트리 목록
 #   gw -c               .gwconfig 열기/생성
 
@@ -24,6 +25,10 @@ gw() {
       ;;
     -i|--init)
       _gw_init
+      return $?
+      ;;
+    prune)
+      _gw_prune "$2"
       return $?
       ;;
     -h|--help|"")
@@ -135,6 +140,8 @@ Usage:
   gw -i              프로젝트를 gw 구조로 초기화
   gw <branch> [base] 워크트리 생성 후 이동 (이미 있으면 이동만)
   gw -d <branch>     워크트리 제거
+  gw prune           리모트에서 삭제된 브랜치의 워크트리 정리
+  gw prune --dry-run 정리 대상만 확인
   gw -l              워크트리 목록
   gw -c              .gwconfig 열기/생성
   gw -h              도움말
@@ -145,6 +152,8 @@ Examples:
   gw task/1234 develop  develop 기반으로 워크트리 생성
   gw task/1234       이미 있으면 해당 워크트리로 이동
   gw -d task/1234    task/1234 워크트리 제거
+  gw prune           리모트에서 삭제된 브랜치의 워크트리 한번에 정리
+  gw prune --dry-run 정리 대상 목록만 확인
   gw -c              .gwconfig 편집 (없으면 템플릿 생성)
 
 Init (gw -i):
@@ -314,6 +323,136 @@ TEMPLATE
   echo "Run 'gw -c' to customize your config."
 }
 
+_gw_prune() {
+  local dry_run=false
+  if [[ "$1" == "-n" || "$1" == "--dry-run" ]]; then
+    dry_run=true
+  fi
+
+  local git_bin=$(command -v git)
+
+  local git_root
+  git_root=$($git_bin rev-parse --show-toplevel 2>/dev/null) || {
+    echo "Error: Not in a git repository"
+    return 1
+  }
+
+  local main_worktree=$($git_bin worktree list --porcelain | head -1 | sed 's/^worktree //')
+  local worktree_parent=$(dirname "$main_worktree")
+  local current_dir=$(pwd)
+
+  # Fetch and prune remote tracking refs
+  echo "Fetching..."
+  $git_bin fetch --prune origin 2>/dev/null
+
+  # Get gone branches (remote deleted)
+  local -a gone_branches
+  gone_branches=(${(f)"$(LC_ALL=C $git_bin branch -vv 2>/dev/null | awk '/: gone\]/{sub(/^[ *+]+/, ""); print $1}')"})
+
+  local -a pruneable_paths=()
+  local -a pruneable_names=()
+  local -a pruneable_reasons=()
+  local needs_cd=false
+
+  # Parse worktree list (porcelain), skip main worktree
+  local is_main=true
+  local wt_path="" wt_branch=""
+
+  while IFS= read -r line || [[ -n "$wt_path" ]]; do
+    if [[ -z "$line" ]]; then
+      if [[ -n "$wt_path" && "$is_main" == false ]]; then
+        local display_name="${wt_branch:-${wt_path#$worktree_parent/}}"
+
+        if [[ ! -d "$wt_path" ]]; then
+          pruneable_paths+=("$wt_path")
+          pruneable_names+=("$display_name")
+          pruneable_reasons+=("디렉토리 없음")
+        elif [[ -n "$wt_branch" ]] && (( ${gone_branches[(Ie)$wt_branch]} )); then
+          pruneable_paths+=("$wt_path")
+          pruneable_names+=("$display_name")
+          pruneable_reasons+=("리모트 브랜치 삭제됨")
+          if [[ "$current_dir" == "$wt_path"* ]]; then
+            needs_cd=true
+          fi
+        fi
+      fi
+      wt_path=""
+      wt_branch=""
+      is_main=false
+      continue
+    fi
+
+    if [[ "$line" == "worktree "* ]]; then
+      wt_path="${line#worktree }"
+    elif [[ "$line" == "branch refs/heads/"* ]]; then
+      wt_branch="${line#branch refs/heads/}"
+    fi
+  done < <($git_bin worktree list --porcelain; echo "")
+
+  if (( ${#pruneable_paths[@]} == 0 )); then
+    echo "정리할 워크트리가 없습니다."
+    return 0
+  fi
+
+  echo "정리 대상:"
+  echo ""
+  for i in {1..${#pruneable_paths[@]}}; do
+    echo "  ${pruneable_names[$i]}  (${pruneable_reasons[$i]})"
+  done
+  echo ""
+
+  if $dry_run; then
+    return 0
+  fi
+
+  echo -n "모두 제거할까요? [y/N] "
+  read -r confirm
+  if [[ "$confirm" != [yY] ]]; then
+    echo "취소됨."
+    return 0
+  fi
+
+  echo ""
+
+  # If current dir is being removed, cd to main first
+  if $needs_cd; then
+    cd "$main_worktree"
+  fi
+
+  # Clean stale entries first (broken worktrees with missing directories)
+  $git_bin worktree prune
+
+  local -a removed_branches=()
+
+  for i in {1..${#pruneable_paths[@]}}; do
+    local path="${pruneable_paths[$i]}"
+    local name="${pruneable_names[$i]}"
+    if [[ -d "$path" ]]; then
+      echo "제거 중: $name"
+      if ! $git_bin worktree remove "$path" 2>/dev/null; then
+        echo "  강제 제거 중: $name (uncommitted changes)"
+        $git_bin worktree remove --force "$path" || {
+          echo "  Warning: $name 제거 실패"
+          continue
+        }
+      fi
+    else
+      echo "정리됨: $name"
+    fi
+    removed_branches+=("$name")
+  done
+
+  # Clean up local branches
+  for branch in "${removed_branches[@]}"; do
+    if $git_bin show-ref --verify --quiet "refs/heads/$branch"; then
+      $git_bin branch -D "$branch" 2>/dev/null && echo "브랜치 삭제: $branch"
+    fi
+  done
+
+  echo ""
+  echo "Done! $(pwd)"
+}
+
 _gw_delete() {
   local branch="$1"
   if [[ -z "$branch" ]]; then
@@ -362,7 +501,18 @@ _gw() {
     '--help[도움말]'
   )
 
-  _arguments -s $opts '1:branch:_gw_git_branches' '2:base branch:_gw_git_branches'
+  local -a subcmds
+  subcmds=(
+    'prune:머지됨/깨진 워크트리 정리'
+  )
+
+  _arguments -s $opts '1:branch or command:_gw_first_arg' '2:base branch:_gw_git_branches'
+}
+
+_gw_first_arg() {
+  _alternative \
+    'subcommands:command:(prune)' \
+    'branches:branch:_gw_git_branches'
 }
 
 _gw_git_branches() {
