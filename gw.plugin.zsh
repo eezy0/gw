@@ -344,13 +344,13 @@ _gw() {
 
 _gw_git_branches() {
   local -a branches
-  branches=(${(f)"$(git branch --all --format='%(refname:short)' 2>/dev/null | sed 's|^origin/||' | sort -u)"})
+  branches=(${(f)"$(git branch --all --format='%(refname:short)' 2>/dev/null | grep -v '^origin$' | sed 's|^origin/||' | sort -u)"})
   _describe 'branch' branches
 }
 
 _gw_worktree_branches() {
   local -a branches
-  branches=(${(f)"$(git worktree list --porcelain 2>/dev/null | awk '/^branch refs\/heads\//{sub("refs/heads/", ""); print}')"})
+  branches=(${(f)"$(git worktree list --porcelain 2>/dev/null | awk '/^branch refs\/heads\//{sub("^branch refs/heads/", ""); print}')"})
   _describe 'worktree branch' branches
 }
 
