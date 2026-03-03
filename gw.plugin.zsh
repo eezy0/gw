@@ -98,6 +98,8 @@ gw() {
   echo "Branch: $branch (base: $base_branch)"
   echo ""
 
+  local _gw_did_stash=false
+
   if git show-ref --verify --quiet "refs/heads/$branch"; then
     [[ -n "$base" ]] && echo "Warning: base branch '$base' ignored (local branch '$branch' already exists)"
     echo "Using existing local branch: $branch"
@@ -112,7 +114,28 @@ gw() {
     git worktree add -b "$branch" "$worktree_path" "origin/$branch" || return 1
   else
     echo "Creating new branch: $branch"
-    git worktree add -b "$branch" "$worktree_path" "$base_branch" || return 1
+
+    if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
+      echo ""
+      echo "You have uncommitted changes in the current worktree."
+      echo -n "Carry uncommitted changes to new branch? [y/N] "
+      read -r confirm
+      if [[ "$confirm" == [yY] ]]; then
+        git stash push -m "gw: carry changes to $branch" || {
+          echo "Error: Failed to stash changes"
+          return 1
+        }
+        _gw_did_stash=true
+      fi
+    fi
+
+    git worktree add -b "$branch" "$worktree_path" "$base_branch" || {
+      if $_gw_did_stash; then
+        echo "Restoring stashed changes..."
+        git stash pop --quiet
+      fi
+      return 1
+    }
   fi
 
   local config_file="$worktree_parent/.gwconfig"
@@ -147,6 +170,16 @@ gw() {
     fi
   else
     cd "$worktree_path"
+  fi
+
+  if $_gw_did_stash; then
+    echo "Applying uncommitted changes..."
+    if ! git stash pop; then
+      echo ""
+      echo "Warning: Stash could not be applied cleanly."
+      echo "Your changes are still in the stash. Run 'git stash pop' manually to resolve conflicts."
+    fi
+    echo ""
   fi
 
   echo "Done! [$branch] $(pwd)"
