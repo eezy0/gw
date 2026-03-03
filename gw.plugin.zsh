@@ -434,13 +434,13 @@ _gw_prune() {
   local -a removed_branches=()
 
   for i in {1..${#pruneable_paths[@]}}; do
-    local path="${pruneable_paths[$i]}"
+    local wt="${pruneable_paths[$i]}"
     local name="${pruneable_names[$i]}"
-    if [[ -d "$path" ]]; then
+    if [[ -d "$wt" ]]; then
       echo "Removing: $name"
-      if ! $git_bin worktree remove "$path" 2>/dev/null; then
+      if ! $git_bin worktree remove "$wt" 2>/dev/null; then
         echo "  Force removing: $name (uncommitted changes)"
-        $git_bin worktree remove --force "$path" || {
+        $git_bin worktree remove --force "$wt" || {
           echo "  Warning: failed to remove $name"
           continue
         }
@@ -479,10 +479,47 @@ _gw_delete() {
   local main_worktree=$($git_bin worktree list --porcelain | head -1 | sed 's/^worktree //')
   local worktree_parent=$(dirname "$main_worktree")
   local worktree_path="$worktree_parent/$branch"
+  local actual_branch=""
 
-  if [[ ! -d "$worktree_path" ]]; then
-    echo "Error: Worktree not found: $worktree_path"
-    return 1
+  if [[ -d "$worktree_path" ]]; then
+    # matched by path, look up the branch
+    local wt_line=""
+    local found=false
+    while IFS= read -r line; do
+      if [[ "$line" == "worktree $worktree_path" ]]; then
+        found=true
+      elif $found; then
+        if [[ "$line" == "branch refs/heads/"* ]]; then
+          actual_branch="${line#branch refs/heads/}"
+          break
+        elif [[ -z "$line" ]]; then
+          break
+        fi
+      fi
+    done < <($git_bin worktree list --porcelain)
+  else
+    # not found by path, search by branch name
+    local wt_path="" wt_branch=""
+    while IFS= read -r line; do
+      if [[ "$line" == "worktree "* ]]; then
+        wt_path="${line#worktree }"
+      elif [[ "$line" == "branch refs/heads/"* ]]; then
+        wt_branch="${line#branch refs/heads/}"
+      elif [[ -z "$line" ]]; then
+        if [[ "$wt_branch" == "$branch" && "$wt_path" != "$main_worktree" ]]; then
+          worktree_path="$wt_path"
+          actual_branch="$wt_branch"
+          break
+        fi
+        wt_path=""
+        wt_branch=""
+      fi
+    done < <($git_bin worktree list --porcelain; echo "")
+
+    if [[ ! -d "$worktree_path" ]]; then
+      echo "Error: Worktree not found for: $branch"
+      return 1
+    fi
   fi
 
   if [[ "$(pwd)" == "$worktree_path"* ]]; then
@@ -498,8 +535,9 @@ _gw_delete() {
     }
   fi
 
-  if $git_bin show-ref --verify --quiet "refs/heads/$branch"; then
-    $git_bin branch -D "$branch" 2>/dev/null && echo "Branch deleted: $branch"
+  local del_branch="${actual_branch:-$branch}"
+  if $git_bin show-ref --verify --quiet "refs/heads/$del_branch"; then
+    $git_bin branch -D "$del_branch" 2>/dev/null && echo "Branch deleted: $del_branch"
   fi
 
   echo "Done! $(pwd)"
