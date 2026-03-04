@@ -115,13 +115,13 @@ gw() {
   else
     echo "Creating new branch: $branch"
 
-    if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
+    if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null || [[ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]]; then
       echo ""
       echo "You have uncommitted changes in the current worktree."
       echo -n "Carry uncommitted changes to new branch? [y/N] "
       read -r confirm
       if [[ "$confirm" == [yY] ]]; then
-        git stash push -m "gw: carry changes to $branch" || {
+        git stash push -u -m "gw: carry changes to $branch" || {
           echo "Error: Failed to stash changes"
           return 1
         }
